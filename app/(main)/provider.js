@@ -9,7 +9,7 @@ function DashboardProvider({ children }) {
     <SidebarProvider>
         <AppSidebar/>
     <div className='w-full p-10'>
-        {/* <SidebarTrigger/> */}
+        <SidebarTrigger/>
         <WelcomeContainer/>
       {children}
       

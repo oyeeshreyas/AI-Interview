@@ -1,4 +1,4 @@
-
+"use client"
 import React, { useState } from 'react'
 import InterviewHeader from './_components/InterviewHeader'
 import { InterviewDataContext } from '@/context/InterviewDataContext'

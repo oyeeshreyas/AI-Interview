@@ -26,18 +26,29 @@ function QuestionList({ formData, onCreateLink }) {
             const result = await axios.post('/api/ai-model', {
                 ...formData
             });
-            console.log(result.data.content);
-    
-            let content = result.data.content;
+            console.log(result?.data?.content);
+
+            let content = result?.data?.content;
+            if (!content) {
+                throw new Error("No response content returned from AI model");
+            }
             content = content.replace('```json', '').replace('```', '').trim();
-    
+
             const arrayStart = content.indexOf('[');
             const arrayEnd = content.lastIndexOf(']');
+            if (arrayStart === -1 || arrayEnd === -1) {
+                throw new Error("Invalid response format received from AI model");
+            }
             const arrayString = content.substring(arrayStart, arrayEnd + 1);
-    
-            // Instead of JSON.parse, use eval safely:
-            const questions = eval(arrayString); // careful: only if you TRUST the backend
-    
+
+            let questions;
+            try {
+                questions = JSON.parse(arrayString);
+            } catch (jsonErr) {
+                // Fallback for relaxed LLM JSON/JS object syntax (e.g. single quotes, unquoted keys, trailing commas)
+                questions = new Function(`return (${arrayString})`)();
+            }
+
             setQuestionList(questions);
             setLoading(false);
         } catch (e) {
@@ -47,27 +58,51 @@ function QuestionList({ formData, onCreateLink }) {
         }
     };
 
-    const onFinish=async()=>{
+    const onFinish = async () => {
         setSaveLoading(true);
-        const interview_id=uuidv4();
+        const interview_id = uuidv4();
 
-const { data, error } = await supabase
-.from('interviews')
-.insert([
-  { 
-    ...formData,
-    questionList:questionList,
-    userEmail:user?.email,
-    interview_id:interview_id,
-   },
-])
-.select()
-setSaveLoading(false);
+        const formattedType = Array.isArray(formData?.type)
+            ? JSON.stringify(formData.type)
+            : formData?.type;
 
-onCreateLink(interview_id)
+        const { data, error } = await supabase
+            .from('interviews')
+            .insert([
+                {
+                    id: Date.now(),
+                    ...formData,
+                    type: formattedType,
+                    questionList: questionList,
+                    userEmail: user?.email,
+                    interview_id: interview_id,
+                },
+            ])
+            .select();
 
-        
-    }
+        if (error) {
+            console.error("Supabase insert error:", error);
+            toast.error("Failed to save interview: " + (error.message || "Database error"));
+            setSaveLoading(false);
+            return;
+        }
+
+        // Update User Credit
+        if (user?.email) {
+            const currentCredits = user?.credits !== undefined && user?.credits !== null ? Number(user.credits) : 10;
+            const newCredits = Math.max(0, currentCredits - 1);
+
+            const userUpdate = await supabase
+                .from('Users')
+                .update({ credits: newCredits })
+                .eq('email', user?.email)
+                .select();
+            console.log("User credits updated:", userUpdate);
+        }
+
+        setSaveLoading(false);
+        onCreateLink(interview_id);
+    };
 
     return (
         <div>
